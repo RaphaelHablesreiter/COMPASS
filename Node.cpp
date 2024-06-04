@@ -3,6 +3,7 @@
 #include <set>
 #include <random>
 #include <iostream>
+#include <fstream>
 
 #include "Node.h"
 #include "Structures.h"
@@ -393,7 +394,7 @@ void Node::change_alleles_CNA_locus(int locus, bool heterozygous){
         }
     }
     CNA_events.erase(CNA_to_remove);
-    CNA_events.insert(CNA_to_add);
+    CNA_events.insert(CNA_to_add); 
 }
 
 
@@ -513,12 +514,20 @@ std::string Node::get_label_simple(std::set<int> excluded_mutations){
                 for (int pos=0;pos<data.locus_to_name[i].size()-1;pos++){
                     if (data.locus_to_name[i].substr(pos,2)=="p.") nonsyn_mut=true;
                 }
-                if (data.locus_to_name[i]=="FLT3-ITD") nonsyn_mut=true;
-                if (data.locus_to_name[i].size()>12 && data.locus_to_name[i].substr(data.locus_to_name[i].size()-12,12)=="splice-donor") nonsyn_mut = true;
-                bool somatic_nonsyn_mut = nonsyn_mut && data.locus_to_freq[i]==0.0;
-                if (somatic_nonsyn_mut) label+="<B>";
-                label+= data.locus_to_name[i]+"(chr"+data.locus_to_chromosome[mut]+")";
-                if (somatic_nonsyn_mut) label+="</B>";
+                if (data.locus_to_name[i]=="FLT3-ITD"){
+                    label+="<B><I>FLT3</I>-ITD</B>";
+                } else if (data.locus_to_name[i]=="Fusion inv(16): CBFB-MYH11"){
+                    label+="<B>Fusion inv(16): <I>CBFB</I>-<I>MYH11</I></B>";
+                } else if (data.locus_to_name[i]=="Fusion t(8;21): RUNX1-RUNX1T1"){
+                    label+="<B>Fusion t(8;21): <I>RUNX1</I>-<I>RUNX1T1</I></B>";
+                } else if ((data.locus_to_name[i].size()>12 && data.locus_to_name[i].substr(data.locus_to_name[i].size()-12,12)=="splice-donor") ||
+                           is_aml_driver(data.locus_to_name[i])){
+                    label+="<B>";
+                    label+= to_gene_italic(data.locus_to_name[i]); //+"(chr"+data.locus_to_chromosome[mut]+")";
+                    label+="</B>";
+                } else {
+                    label+= to_gene_italic(data.locus_to_name[i]); //+"(chr"+data.locus_to_chromosome[mut]+")";
+                }
                 label+="<br/>";
             }
         }
@@ -542,4 +551,37 @@ std::string Node::get_label_simple(std::set<int> excluded_mutations){
     }
     if (label=="") label = " ";
     return label;
+}
+
+// Function that returns TRUE if gene name is an AML driver gene
+bool Node::is_aml_driver(std::string gene){
+
+    std::vector<std::string> aml_driver_genes;
+
+    // Read driver genes from file
+    std::ifstream file("aml_driver_genes.txt");
+    std::string line;
+    
+    while (file >> line) {
+        aml_driver_genes.push_back(line);
+    }
+
+    std::string delimiter = " ";
+    std::string token = gene.substr(0, gene.find(delimiter));
+
+    if (std::find(aml_driver_genes.begin(), aml_driver_genes.end(), token) != aml_driver_genes.end()){
+        return true;
+    } else {
+        return false;
+    }
+}
+
+std::string Node::to_gene_italic(std::string gene){
+    // find position of space
+    int index = gene.find(" ");
+
+    // make italic    
+    gene.insert(index, "</I>");
+
+    return "<I>"+gene;
 }

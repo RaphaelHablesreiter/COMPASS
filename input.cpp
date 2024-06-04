@@ -276,7 +276,13 @@ void filter_regions(){
             mean+= 1.0*cells[j].region_counts[k] / cells[j].total_counts / n_cells;
         }
         bool is_reliable = ((1.0*count_cells_below_threshold/n_cells <= 0.04) && (mean>=0.2/n_regions));
-        if (data.predetermined_region_weights.size()>k && data.predetermined_region_weights[k]==-1) is_reliable=false;
+        if ((data.predetermined_region_weights.size()>k && data.predetermined_region_weights[k]==-1) || \
+            data.region_to_name[k] == "FusionAmp1" || data.region_to_name[k] == "FusionAmp2" || \
+            data.region_to_name[k] == "FusionAmp3" || data.region_to_name[k] == "FusionAmp4" || \
+            data.region_to_name[k] == "FusionAmp5" || data.region_to_name[k] == "FusionAmp6" || \
+            data.region_to_name[k] == "FusionAmp7" ){
+            is_reliable=false;
+        }
         data.region_is_reliable.push_back(is_reliable);
         regions_filtered = regions_filtered || ((1.0*count_cells_below_threshold/n_cells > 0.04) || (mean<0.2/n_regions));
     }

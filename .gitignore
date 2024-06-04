@@ -1,0 +1,4 @@
+*.o
+COMPASS
+*.code-workspace
+preprocessing/preprocess_loom_old.py

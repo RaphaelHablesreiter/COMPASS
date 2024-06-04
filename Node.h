@@ -126,7 +126,10 @@ class Node {
         // Label of the node, used for plotting.
         std::string get_label();
         std::string get_label_simple(std::set<int> excluded_mutations);
-
+        // Check for AML driver mutations
+        bool is_aml_driver(std::string gene);
+        // Make genes italic
+        std::string to_gene_italic(std::string gene);
 };
 
 #endif

@@ -1,5 +1,7 @@
-CXX	= g++
-CXXFLAGS = -std=c++11 -O2
+# conda install compilers llvm-openmp
+
+# CXX	= g++
+# CXXFLAGS = -std=c++11 -O2
 
 
 COMPASS: COMPASS.o Scores.o Node.o Tree.o Inference.o input.o

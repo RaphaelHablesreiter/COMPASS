@@ -581,19 +581,27 @@ void Tree::to_dot(std::string filename, bool simplified){
         full_output = false;
     }
     std::string basename(filename);
+    std::string filename_data;
     if (full_output){
         filename = filename + "_tree.gv";
+        filename_data = filename.substr(0,filename.size()-8) + "_data.csv";
     }
     else{
         basename = filename.substr(0,filename.size()-3);
+        filename_data = filename.substr(0,filename.size()-3) + "_data.csv";
     }
     std::ofstream out_file(filename);
 
+    // Create data file for R barchart
+    std::ofstream out_data(filename_data);
+    out_data <<"Timepoint,Cells,isWT,Color"<<std::endl;
+
     out_file <<"digraph G{"<<std::endl;
-    out_file <<"node [color=dimgray fontsize=24 fontcolor=black fontname=Helvetica penwidth=5];"<<std::endl;
+    out_file <<"node [color=black fontsize=14 fontcolor=black fontname=Helvetica penwidth=2];"<<std::endl;
+    out_file <<"nodesep = .5; ranksep=0.35; splines=ortho;"<<std::endl;
     for (int i=1;i<n_nodes;i++){
         if (parameters.verbose) std::cout<<i<< " is a child of "<<parents[i]<<std::endl;
-        out_file<<parents[i]<<" -> "<<i<<" [color=dimgray penwidth=4 weight=2];"<<std::endl;
+        out_file<<parents[i]+n_nodes<<" -> "<<i<<" [color=black penwidth=2 weight=2 arrowhead=none];"<<std::endl;
     }
 
     // Identify mutations at the root which are not affected by a CNA
@@ -612,14 +620,15 @@ void Tree::to_dot(std::string filename, bool simplified){
         }
     }
 
-    for (int i=0;i<n_nodes;i++){
-        if (simplified) out_file<<i<<"[label=<"<<nodes[i]->get_label_simple(excluded_mutations)<<">];"<<std::endl;
-        else out_file<<i<<"[label=<"<<nodes[i]->get_label()<<">];"<<std::endl;
+    // i=1 --> skip WT cells
+    for (int i=1;i<n_nodes;i++){
+        out_file<<i<<"[label=<"<<nodes[i]->get_label_simple(excluded_mutations)<<"> shape = plain fontsize=10];"<<std::endl;
     }
-
-    for (int k=0;k<n_nodes;k++){
-        out_file<<k<<" -> "<<k+n_nodes<<" [dir=none style=dashed weight=1 penwidth=5 color="<<colors[k%colors.size()]<<"];"<<std::endl;
+    // Skip k=0, because WT is annotatedd in node
+    for (int k=1;k<n_nodes;k++){
+        out_file<<k<<" -> "<<k+n_nodes<<" [color=black weight=2 penwidth=2];"<<std::endl;
     }
+    
     std::vector<int> count_nodes(n_nodes,0);
     int total=0;
     for (int j=0;j<n_cells;j++){
@@ -630,12 +639,23 @@ void Tree::to_dot(std::string filename, bool simplified){
     }
     for (int k=0;k<n_nodes;k++){
         double size = std::sqrt(100.0*count_nodes[k]/total) /3.0;
-        out_file<<k+n_nodes<<"[label=\""<<count_nodes[k]<<" cells\\n"<<std::round(100.0*count_nodes[k]/total)<<"\\%\""<<" style = filled width="<<size
-        <<" height="<<size<<" color="<<colors[k%colors.size()]<<"];"<<std::endl;
+        if (k==0){
+            out_file<<k+n_nodes<<"[label=\"WT\\n"<<count_nodes[k]<<" cells\\n"<<std::round(100.0*count_nodes[k]/total)<<"\\%\""<<" style = filled width="<<size
+            <<" height="<<size<<" fillcolor=\"#BFBDBF\" penwidth=2];"<<std::endl;
+
+            out_data<<"1,"<<count_nodes[k]<<",1,\"#BFBDBF\""<<std::endl;
+        } else {
+            out_file<<k+n_nodes<<"[label=\""<<count_nodes[k]<<" cells\\n"<<std::round(100.0*count_nodes[k]/total)<<"\\%\""<<" style = filled width="<<size
+            <<" height="<<size<<" fillcolor="<<colors[k%colors.size()]<<" penwidth=2];"<<std::endl;
+            out_data<<"1,"<<count_nodes[k]<<",0,"<<colors[k%colors.size()]<<std::endl;
+        }
     }
 
     out_file <<"}"<<std::endl;
     out_file.close();
+
+    out_data.close();
+
     if (parameters.verbose) std::cout<<"Node probabilities"<<std::endl;
     for (int n=0;n<n_nodes;n++){
         if (parameters.verbose) std::cout<<n<<": "<<node_probabilities[n]<<std::endl;

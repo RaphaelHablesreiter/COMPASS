@@ -28,7 +28,7 @@ Where:
 * --sex can be female (default, 2 X chromosomes) or male (1 X chromosome)
 
 Additional parameters can be changed if needed, although their default values should work for most cases:
-* -d (default: 1): if 1, COMPASS will use the model with doublets, and if 0, COMPASS will use the model without doubets (faster)
+* -d (default: 1): if 1, COMPASS will use the model with doublets, and if 0, COMPASS will use the model without doublets (faster)
 * --doubletrate (default: 0.08) determines the doublet rate, in case -d is set to 1.
 * --dropoutrate (default: 0.05): prior mean of the allelic dropout rates. The dropout rates will be estimated for each SNV with a beta binomial distribution.
 * --dropoutrate_concentration (default: 100): prior concentration parameter for the beta binomial distribution for dropout rates. Higher values will result in the estimated dropout rates to be closer to the prior mean.

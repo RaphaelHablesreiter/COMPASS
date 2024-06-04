@@ -15,29 +15,17 @@ import loompy
 from varcode import Variant
 from pyensembl import ensembl_grch37, ensembl_grch38
 
+
 # Exclude some sites with high error rates
 blacklist = ["1_43815093","1_115256626","2_25463686","2_25467178","2_25469567","2_25458738","2_209113336","2_25536827","2_198267672",\
     "2_209113332","4_106194088","4_106157187","4_106196675","4_106196287","7_148504716","7_148506185","7_148506191","7_148504854",\
     "7_148506194","7_148526908","7_148504717","7_148543582","7_148543583","8_128750698","8_117864842","12_25378673","12_25378676",\
-    "13_28592669","13_28602256","17_29559928","17_29562734","17_7578587","17_7578115","17_7579472","17_7579801","17_29559932",\
+    "10_77210191","10_106721610",\
+    "13_28592669","13_28602256","16_55770629","17_29559928","17_29562734","17_7578587","17_7579472","17_7579801","17_29559932",\
     "17_7579414","17_29483195","17_29559926","17_29562734","17_7579440","20_31024389","21_44524505","21_36259324","X_133527541",\
     "X_44911052","X_39932806","X_39932807","X_44929002","X_15809170","X_39922359","X_15821932","X_15841334","X_15838366","X_15841334",\
     "X_15841336","X_39932907"," X_53426504","X_133549184","X_53426504","X_39914742","X_53426570","X_44949032","X_39921505","X_15827406"]
 
-inv16 = pd.Series(["02", "03", "04", "05", "06", "07", "08"])
-
-class bcolors:
-    HEADER = '\033[95m'
-    OKBLUE = '\033[94m'
-    OKCYAN = '\033[96m'
-    OKGREEN = '\033[92m'
-    WARNING = '\033[93m'
-    FAIL = '\033[91m'
-    ENDC = '\033[0m'
-    BOLD = '\033[1m'
-    UNDERLINE = '\033[4m'
-
-term_size = os.get_terminal_size()
 
 def get_1K_freq(file,chr,pos,ref,alt):
     """
@@ -79,38 +67,20 @@ def get_1K_freq(file,chr,pos,ref,alt):
     
 
 def convert_loom(infile,outdir, min_GQ, min_DP, min_AF, min_frac_cells_genotyped, min_frac_loci_genotyped,min_frac_cells_alt, region="gene",\
-                    reference=37,verbose=True,SNP_file=None,panel_file=None,whitelist_file=None,use_whitelist_only=False, fusion=False):
-
-    # Options:
-    # use_whitelist_only = False
-    use_whitelist = False
-    use_cnvamplicons = False
-    # fusion = True
-    # SNP_file = None
-
+                    reference=37,verbose=True,SNP_file=None,panel_file=None,whitelist_file=None):
     if reference==37:
         ensembl_ref = ensembl_grch37
     else:
         ensembl_ref = ensembl_grch38
     basename = os.path.basename(infile)[:-5]
-    basename = basename.replace(".cells","")
-    patient = basename[:-1]
-
-    if patient == "05A_N":
-        patient = "05"
-
-    # print('─' * term_size.columns)
-    print(bcolors.HEADER + '{:*^80}'.format("Start preprocessing for sample " + basename + " of patient " + patient + "!") + bcolors.ENDC)
-    # print('─' * term_size.columns)
-    
     if SNP_file != None:
         SNP_f = open(SNP_file,"r")
 
     # If selected mutations were already provided
     whitelist=[]
-    whitelist_positions=[]    
-
-    if whitelist_file:
+    whitelist_positions=[]
+    use_whitelist = False
+    if whitelist_file is not None:
         use_whitelist = True
         df_mutations = pd.read_csv(whitelist_file)
         for i in df_mutations.index:
@@ -120,30 +90,20 @@ def convert_loom(infile,outdir, min_GQ, min_DP, min_AF, min_frac_cells_genotyped
             whitelist_positions.append(pos)
             mutation = pos + "_"+df_mutations.loc[i,"ref allele"] + "_"+df_mutations.loc[i,"alt allele"]
             whitelist.append(mutation)
-        print(bcolors.OKGREEN + "Loaded WHITELIST for patient " + patient + " with " + str(len(whitelist)) + " variants:" + bcolors.ENDC)
-        print(*whitelist, sep=', ')
-
-    cnv_amplicons = [] 
-    if use_cnvamplicons:
-        cnv_amplicons = pd.read_csv("/Users/raphaelhablesreiter/Projects/MissionBio_Analysis/Data/COMPASS/CNV_amplicons.txt", header=None)
-        cnv_amplicons = list(cnv_amplicons[0])
-        print("Loaded list of CNV amplicons for patient " + patient + ":")
-        print(*cnv_amplicons, sep=', ')
 
     with loompy.connect(infile) as ds:
-        # if verbose: print('─' * term_size.columns)
-        print(bcolors.OKGREEN + "Get variant information:" + bcolors.ENDC)
-        # if verbose: print('─' * term_size.columns)
         n_loci_full,n_cells_full = ds.shape
         chromosomes_full = ds.ra["CHROM"]
+        chromosomes_full = [str(chr) for chr in chromosomes_full]
         positions_full = ds.ra["POS"]
         # The loom files appear to not always be sorted. (or partially sorted...)
         # reorder loci by position and chromosome
         chr_order = ["1","2","3","4","5","6","7","8","9","10","11","12","13","14","15","16","17","18","19","20","21","22","X","Y"]
+
         for chrom in chromosomes_full:
             chr = str(chrom)
-            # if not chr in chr_order:
-            #     print("WARNING: chromosome "+ str(chr) + " was not recognized.")
+            if not chr in chr_order:
+                print("WARNING: chromosome "+ str(chr) + " was not recognized.")
         loci_by_chr={}
         for i in range(n_loci_full):
             chr = str(chromosomes_full[i])
@@ -164,7 +124,7 @@ def convert_loom(infile,outdir, min_GQ, min_DP, min_AF, min_frac_cells_genotyped
         amplicon_names=[]
         amplicon_chromosomes=[]
         if not panel_file is None:
-            df_panel = pd.read_csv(panel_file, sep="\t")
+            df_panel = pd.read_csv(panel_file)
         amplicon_map={}
         amplicon_to_gene = {}
         for i in sorted_loci:
@@ -186,7 +146,9 @@ def convert_loom(infile,outdir, min_GQ, min_DP, min_AF, min_frac_cells_genotyped
                     elif len(genes_at_pos)==1 and (panel_file is None):
                         amplicon_to_gene[amplicons_full[i]] = genes_at_pos[0]
                     else:
-                        amplicon_to_gene[amplicons_full[i]] = amplicon_name.lstrip("MYE_").split("_")[0] # Assume amplicon name is gene_xx, potentially prefixed by MYE_
+                        if amplicon_name.startswith("MYE_"):
+                            amplicon_name = amplicon_name[4:]
+                        amplicon_to_gene[amplicons_full[i]] = amplicon_name.split("_")[0] # Assume amplicon name is gene_xx, potentially prefixed by MYE_
         n_amplicons = len(amplicon_names)
 
 
@@ -195,23 +157,15 @@ def convert_loom(infile,outdir, min_GQ, min_DP, min_AF, min_frac_cells_genotyped
         candidate_loci = []
         for i in sorted_loci:
             chr_pos = str(chromosomes_full[i])+"_"+str(positions_full[i])
-            if use_whitelist == True and use_whitelist_only == False:
-                if chr_pos in whitelist_positions: 
-                    candidate_loci.append(i)
-                else:
-                    if chr_pos in blacklist: continue
-                    n_alt = np.sum( (genotypes[i,:]==1) | (genotypes[i]==2) )
-                    if n_alt / n_cells_full >= min_frac_cells_alt:
-                        candidate_loci.append(i)                   
-            elif use_whitelist == True and use_whitelist_only == True:
-                if chr_pos in whitelist_positions: 
-                    candidate_loci.append(i)  
+            if use_whitelist:
+                if chr_pos in whitelist_positions: candidate_loci.append(i)
             else:
                 if chr_pos in blacklist: continue
-                n_alt = np.sum( (genotypes[i,:]==1) | (genotypes[i]==2) )
+                n_alt = np.sum( (genotypes[i,:]==1) | (genotypes[i,:]==2) )
                 if n_alt / n_cells_full >= min_frac_cells_alt:
                     candidate_loci.append(i)
         del genotypes
+        #print("Number of candidate loci: " + str(len(candidate_loci)))
 
         sorted_candidate = sorted(candidate_loci)
         argsort_candidate = np.argsort(candidate_loci)
@@ -230,31 +184,19 @@ def convert_loom(infile,outdir, min_GQ, min_DP, min_AF, min_frac_cells_genotyped
         RO = (ds.layers["RO"][sorted_candidate,:])[reverse_sort,:]
         GQ = (ds.layers["GQ"][sorted_candidate,:])[reverse_sort,:]
         genotypes = (ds[sorted_candidate,:])[reverse_sort,:]
-        
-        
         # Set low quality genotypes to "missing"
         prefiltered_loci = []
         lowqual_genotypes = (GQ<min_GQ) | (DP<min_DP) | ( (genotypes!=0)& (AD/(DP+0.1)<min_AF) )
         genotypes[lowqual_genotypes] = 3
         # Keep loci which are genotyped in at least min_frac_cells_genotyped of the cells
         for i in range(len(candidate_loci)):
-            if use_whitelist == True and use_whitelist_only == False:
+            if use_whitelist:
                 v = str(chromosomes[i])+"_"+str(positions[i])+"_"+ref[i]+"_"+alt[i]
-                if v in whitelist: 
-                    prefiltered_loci.append(i)
-                else:
-                    count_cells_genotyped = np.sum(genotypes[i,:]!=3)
-                    if count_cells_genotyped/n_cells_full>min_frac_cells_genotyped: 
-                        prefiltered_loci.append(i)       
-            elif use_whitelist == True and use_whitelist_only == True:
-                v = str(chromosomes[i])+"_"+str(positions[i])+"_"+ref[i]+"_"+alt[i]
-                if v in whitelist: 
-                    prefiltered_loci.append(i)                             
+                if v in whitelist: prefiltered_loci.append(i)
             else:
                 count_cells_genotyped = np.sum(genotypes[i,:]!=3)
                 if count_cells_genotyped/n_cells_full>min_frac_cells_genotyped: 
                     prefiltered_loci.append(i)
-
         # Keep cells for which at least X% of the variants are genotyped
         filtered_cells = []
         for j in range(n_cells_full):
@@ -262,10 +204,7 @@ def convert_loom(infile,outdir, min_GQ, min_DP, min_AF, min_frac_cells_genotyped
             if count_loci_genotyped/len(prefiltered_loci)>= min_frac_loci_genotyped:
                 filtered_cells.append(j)
         n_cells = len(filtered_cells)
-
-        # Write barcode id's to file
-        ds.ca["barcode"][filtered_cells].tofile(os.path.join(outdir,basename.replace(".cells", "")+"_barcodes.csv"), sep = ",")
-
+ 
         # Filter loci
         filtered_loci=[]
         variant_names=[]
@@ -277,18 +216,18 @@ def convert_loom(infile,outdir, min_GQ, min_DP, min_AF, min_frac_cells_genotyped
             count_cells1 = np.sum(genotypes[i,:]==1)
             count_cells2 = np.sum(genotypes[i,:]==2)
             v = str(chromosomes[i])+"_"+str(positions[i])+"_"+ref[i]+"_"+alt[i]
-
-            if (not use_whitelist) or (use_whitelist and v not in whitelist):
+            if not use_whitelist:
                 # Filter out loci with very few cells genotyped as alt. The filter is a bit more restrictive when there are few total cells
                 if (count_cells1+count_cells2)/max(4000,len(filtered_cells))<=min_frac_cells_alt: continue
                 if (np.sum(AD[i,:]>min_DP)/max(4000,len(filtered_cells))<=min_frac_cells_alt): continue # require minimum AD for evidence of alt
                 # Filter out germline variants homozygous alt
                 if count_cells0 <=0.01 * max(4000,n_cells) and count_cells1<0.03*max(4000,n_cells): continue
 
+            
 
             # Get the effect of the variant on the protein (if coding mutation) and its frequency in the population
             # The filters are less restrictive for non-synonymous mutations which have a low frequency in the population
-            if amplicons[i]=="AMPL135278" and len(alt[i])>1: # Handle FL3-ITD separately AMPL135278 AMPL379722
+            if amplicons[i]=="FLT3_2_a3" and len(alt[i])>1: # Handle FL3-ITD separately
                 nonsynonymous_variant=True
                 variant_name = "FLT3-ITD"
             else:
@@ -298,10 +237,6 @@ def convert_loom(infile,outdir, min_GQ, min_DP, min_AF, min_frac_cells_genotyped
                     alt_split=alt[i].split("+")
                     ref[i] = alt_split[0]
                     alt[i] = alt_split[1]
-                    if ref[i]=="*": ref[i] = ""
-                    if alt[i]=="*": alt[i] = ""
-
-                #print("Found variant: " + str(chromosomes[i])+"_"+str(positions[i])+"_"+ref[i]+"_"+alt[i])
                 variant = Variant(contig=str(chromosomes[i]), start=positions[i], ref=ref[i], alt=alt[i], ensembl=ensembl_ref)
                 effects = variant.effects()
                 topPriorityEffect = effects.top_priority_effect()
@@ -318,6 +253,8 @@ def convert_loom(infile,outdir, min_GQ, min_DP, min_AF, min_frac_cells_genotyped
             else:
                 variant_frequency = get_1K_freq(SNP_f,str(chromosomes[i]),int(positions[i]),str(ref[i]),str(alt[i]))
                
+            if variant_frequency>0.01:
+                variant_name = "SNP " + variant_name
 
             # Stricter filters for SNPs and silent mutations
             if variant_frequency>0.0001:
@@ -326,15 +263,13 @@ def convert_loom(infile,outdir, min_GQ, min_DP, min_AF, min_frac_cells_genotyped
                 min_cells_hom = 120
             elif not nonsynonymous_variant:
                 max_dropout = 0.35
-                max_ratio_dropoutallele = 1.3 
-                min_cells_hom = 100
+                max_ratio_dropoutallele=1.3 
+                min_cells_hom=100
             else:
                 max_dropout = 0.08
-                max_ratio_dropoutallele = 1.1
-                min_cells_hom = 50
-            
-
-            if (not use_whitelist) or (use_whitelist == True and (v not in whitelist)):
+                max_ratio_dropoutallele=1.1
+                min_cells_hom=50
+            if not use_whitelist:
                 #Higher min frequency for common SNPs and variants with no protein effect
                 if (variant_frequency>0.0001 or not nonsynonymous_variant) and (count_cells1+count_cells2)/len(filtered_cells)<=2*min_frac_cells_alt: continue
                 # Stricter filters for homozygous alt for SNPs
@@ -357,7 +292,7 @@ def convert_loom(infile,outdir, min_GQ, min_DP, min_AF, min_frac_cells_genotyped
                     and (40+count_cells0 < max_ratio_dropoutallele*(40+count_cells2) or is_small_indel) ) \
                     or max(count_cells0,count_cells2)<min_cells_hom:
                     if verbose:
-                        print("Filtered out a locus in amplicon " + str(amplicons[i])+ " (" + str(chromosomes[i]) + "_" +str(positions[i])+ ")" + " because it seems to be a germline variant not lost in any cells: "\
+                        print("Filtered out a locus in amplicon " + str(amplicons[i]) + " because it seems to be a germline variant not lost in any cells: "\
                             +str(count_cells0) + " hom ref, " + str(count_cells1) + " het, " + str(count_cells2) + " hom alt.")
                     continue
                         
@@ -374,18 +309,17 @@ def convert_loom(infile,outdir, min_GQ, min_DP, min_AF, min_frac_cells_genotyped
                     if RO[i,j]>0 and RO[i,j]>0.03*AD[i,j]:
                         if RO[i,j]/DP[i,j]>threshold: count_reffreq_above+=1
                         else: count_reffreq_below+=1
-                # print(str(count_altfreq_above)+","+str(count_altfreq_below)+","+str(count_reffreq_above)+","+str(count_reffreq_below))
+                print(str(count_altfreq_above)+","+str(count_altfreq_below)+","+str(count_reffreq_above)+","+str(count_reffreq_below))
                 if (count_altfreq_above<count_altfreq_below and count_altfreq_above+count_altfreq_below>500) \
                     or (count_reffreq_above<count_reffreq_below and count_reffreq_above+count_reffreq_below>500):
-                    if amplicons[i]!="AMPL135278": # exclude FLT3-ITD from this filter
-                        if verbose: print("Filtered out a locus in amplicon " + str(amplicons[i]) + " (" + str(chromosomes[i]) + "_" +str(positions[i])+ ")" + " because one allele always had a higher frequency than the other.")
+                    if amplicons[i]!="FLT3_2_a3": # exclude FLT3-ITD from this filter
+                        if verbose: print("Filtered out a locus in amplicon " + str(amplicons[i]) + " because one allele always had a higher frequency than the other.")
                         continue
         
                 # Filter out deletions (their genotyping seems imprecise)
                 if (alt[i]=="*" or (len(alt[i])<len(ref[i]))) and variant_frequency>0.0001 :
                     if verbose: print("Filtered out a locus in amplicon"+str(amplicons[i])+" because it is a common deletion.")
                     continue
-
 
                 # Filter out variants for which the sequencing depth is always low when the variant is present
                 depth_wt = np.mean(DP[i,(genotypes[i,:]==0)])
@@ -446,11 +380,9 @@ def convert_loom(infile,outdir, min_GQ, min_DP, min_AF, min_frac_cells_genotyped
             variant_frequencies.append(variant_frequency)
             last_locus=i
             lastvariant_nonsynonymous = nonsynonymous_variant
-            if verbose: print(bcolors.BOLD + "** Selected variant " + str(variant_name) + ", "+str(chromosomes[i])+"_"+str(positions[i])+ " (freq "+str(variant_frequency)+"): "\
-                +str(count_cells0) + " hom ref, " + str(count_cells1) + " het, " + str(count_cells2) + " hom alt." + bcolors.ENDC)
-        
+            if verbose: print("** Selected variant " + str(variant_name) + ", "+str(chromosomes[i])+"_"+str(positions[i])+ " (freq "+str(variant_frequency)+"): "\
+                +str(count_cells0) + " hom ref, " + str(count_cells1) + " het, " + str(count_cells2) + " hom alt.")
         n_loci = len(filtered_loci)
-
 
         variants_info = {"CHR":[],"POS":[],"REF":[],"ALT":[],"REGION":[],"NAME":[],"FREQ":[]}
         for j in range(n_cells):
@@ -470,35 +402,22 @@ def convert_loom(infile,outdir, min_GQ, min_DP, min_AF, min_frac_cells_genotyped
             variants_info["NAME"].append(variant_names[i])
             if SNP_file is not None: variants_info["FREQ"].append(variant_frequencies[i])
             else: variants_info["FREQ"].append(0)
-
-#            if use_cnvamplicons:
-#                cnv_amplicons.append(amplicons[locus])
-
             for j in range(n_cells):
                 if (GQ[filtered_loci[i],filtered_cells[j]]>0.1):
                     variants_info[str(j)].append(str(int(RO[filtered_loci[i],filtered_cells[j]])) + ":" + str(int(AD[filtered_loci[i],filtered_cells[j]])) \
                                                 + ":" + str(int(genotypes[filtered_loci[i],filtered_cells[j]])))
                 else: # if genotype quality is 0, consider that we have no reads, as the reads are most likely unreliable
                     variants_info[str(j)].append("0:0:3")
-
         df_variants = pd.DataFrame(variants_info)
-        df_variants.to_csv(os.path.join(outdir,basename.replace(".cells", "")+"_variants.csv"),index=False,header=True)
+        df_variants.to_csv(os.path.join(outdir,basename+"_variants.csv"),index=False,header=True)
 
 
         # Get amplicon read counts for each cell
-        # if verbose: print('─' * term_size.columns)
-        print(bcolors.OKGREEN + "Get CNV information!" + bcolors.ENDC)
-        # if verbose: print('─' * term_size.columns)
         amplicon_matrix = np.zeros((n_amplicons,n_cells),dtype=int)
-        
-        cnv_amplicons_index = []
+
         for k in range(n_amplicons):
             amplicon = amplicon_names[k]
             loci_in_amplicon=[]
-
-            if use_cnvamplicons and amplicon in cnv_amplicons:
-                cnv_amplicons_index.append(k)
-
             for i in range(n_loci_full):
                 if amplicons_full[i]==amplicon:
                     loci_in_amplicon.append(i)
@@ -506,49 +425,30 @@ def convert_loom(infile,outdir, min_GQ, min_DP, min_AF, min_frac_cells_genotyped
             for j in range(n_cells):
                 amplicon_matrix[k,j] = np.median(DP_amplicon[:,filtered_cells[j]])
 
-
         
         # index: chromosome and name of the region
         index_amplicons=[str(amplicon_chromosomes[k])+"_"+amplicon_map[amplicon_names[k]] for k in range(n_amplicons)]
         df_amplicons = pd.DataFrame(amplicon_matrix,index=index_amplicons,dtype=int)
-        
-        if use_cnvamplicons:
-            df_amplicons = df_amplicons.iloc[cnv_amplicons_index]
-
         if region=="amplicon":
-            df_amplicons.to_csv(os.path.join(outdir,basename.replace(".cells", "")+"_regions.csv"),sep=",",header=False,index=True)
+            df_amplicons.to_csv(os.path.join(outdir,basename+"_regions.csv"),sep=",",header=False,index=True)
 
         gene_to_amplicons = []
         gene_to_name = []
         gene_to_chr = []
-        cnv_amplicons_index = []
         n_genes=0
         for k in range(n_amplicons):
             amplicon = amplicon_map[amplicon_names[k]]
             gene = amplicon_to_gene[amplicon_names[k]]
-            
-            if use_cnvamplicons and amplicon in cnv_amplicons:
-                if gene in gene_to_name:
-                    g = gene_to_name.index(gene)
-                    gene_to_amplicons[g].append(k)
-                else:
-                    g = n_genes
-                    n_genes+=1
-                    gene_to_amplicons.append([k])
-                    gene_to_name.append(gene)
-                    gene_to_chr.append(amplicon_chromosomes[k])
-            
-            if not use_cnvamplicons:
-                if gene in gene_to_name:
-                    g = gene_to_name.index(gene)
-                    gene_to_amplicons[g].append(k)
-                else:
-                    g = n_genes
-                    n_genes+=1
-                    gene_to_amplicons.append([k])
-                    gene_to_name.append(gene)
-                    gene_to_chr.append(amplicon_chromosomes[k])               
-            
+
+            if gene in gene_to_name:
+                g = gene_to_name.index(gene)
+                gene_to_amplicons[g].append(k)
+            else:
+                g = n_genes
+                n_genes+=1
+                gene_to_amplicons.append([k])
+                gene_to_name.append(gene)
+                gene_to_chr.append(amplicon_chromosomes[k])
         
         gene_matrix = np.zeros((n_genes,n_cells))
         for g in range(n_genes):
@@ -558,137 +458,85 @@ def convert_loom(infile,outdir, min_GQ, min_DP, min_AF, min_frac_cells_genotyped
         index_genes=[str(gene_to_chr[g])+"_"+gene_to_name[g] for g in range(n_genes)]
         df_genes = pd.DataFrame(gene_matrix,index=index_genes,dtype=int)
         if region=="gene":
-            df_genes.to_csv(os.path.join(outdir,basename.replace(".cells", "")+"_regions.csv"),sep=",",header=False,index=True)
-        
-        # Add Fusion information
-        if fusion:
-            # if verbose: print('─' * term_size.columns)
-            print(bcolors.OKGREEN + "Get fusion information:" + bcolors.ENDC)
-            # if verbose: print('─' * term_size.columns)
-            chromosomes_full = ds.ra["CHROM"]    
-            chromosomes_fusions = list(filter(lambda x: patient in x, chromosomes_full))
-            chr_order =  list(set(list(filter(lambda x: patient in x, chromosomes_full))))
+            df_genes.to_csv(os.path.join(outdir,basename+"_regions.csv"),sep=",",header=False,index=True)
 
-            if verbose:       
-                print(bcolors.OKGREEN + "Found fusion chromosomes:" + bcolors.ENDC)
-                print(*chr_order)
+        #############################################
+        # SCITE input: genotype matrix and gene names
+        genotype_matrix = np.zeros((n_loci,n_cells))
+        gene_names=[]
 
-            #for fusion in chromosomes_full
-            for chrom in chromosomes_fusions:
-                chr = str(chrom)
-            
-            loci_by_chr={}
-            for i in range(n_loci_full):
-                chr = str(chromosomes_full[i])
-                if not chr in loci_by_chr:
-                    loci_by_chr[chr]=[]
-                loci_by_chr[chr].append((positions_full[i],i))
-            sorted_loci=[]
-            for chr in chr_order:
-                if chr in loci_by_chr:
-                    loci_by_chr[chr].sort()
-                    for x in loci_by_chr[chr]:
-                        sorted_loci.append(x[1])  
-
-
-            #amplicons
-            amplicons_full = ds.ra["amplicon"][:]
-            
-            #get list of unique amplicon names
-            amplicon_names=[]
-            amplicon_chromosomes=[]
-            if not panel_file is None:
-                df_panel = pd.read_csv(panel_file)
-            amplicon_map={}
-            amplicon_to_gene = {}
-            for i in sorted_loci:
-                if amplicons_full[i]!="nan" and amplicons_full[i]!="":
-                    if len(amplicon_names)==0 or amplicons_full[i]!=amplicon_names[-1]:
-                        amplicon_name = amplicons_full[i]
-                        if not panel_file is None:
-                            for k in range(df_panel.shape[0]):
-                                if df_panel.loc[k,"Chr"]==chromosomes_full[i] and df_panel.loc[k,"Primer Start"]<=positions_full[i] \
-                                    and df_panel.loc[k,"Primer End"]>=positions_full[i]:
-                                    amplicon_name = df_panel.loc[k,"Amplicon"]
-                                    continue
-                        amplicon_map[amplicons_full[i]] = amplicon_name
-                        amplicon_names.append(amplicons_full[i])
-                        amplicon_chromosomes.append(chromosomes_full[i])
-                        genes_at_pos = ensembl_ref.gene_names_at_locus(contig=chromosomes_full[i], position=int(positions_full[i]))
-                        if "SRSF2" in genes_at_pos and (panel_file is None):
-                            amplicon_to_gene[amplicons_full[i]] = "SRSF2"
-                        elif len(genes_at_pos)==1 and (panel_file is None):
-                            amplicon_to_gene[amplicons_full[i]] = genes_at_pos[0]
-                        else:
-                            amplicon_to_gene[amplicons_full[i]] = amplicon_name.lstrip("MYE_").split("_")[0] # Assume amplicon name is gene_xx, potentially prefixed by MYE_
-            n_amplicons = len(amplicon_names)
-            
-            if verbose:
-                print("Number of fusion amplicons: " + str(n_amplicons))
-                print(*amplicon_names)
-            
-            fusion_amplicon_matrix = np.zeros((n_amplicons,n_cells),dtype=int)
-            
-            fusion_amplicons_index = []
-            for k in range(n_amplicons):
-                amplicon = amplicon_names[k]
-                loci_in_amplicon=[]
-
-                # if use_cnvamplicons and amplicon in cnv_amplicons:
-                #     fusion_amplicons_index.append(k)
-
-                for i in range(n_loci_full):
-                    if amplicons_full[i]==amplicon:
-                        loci_in_amplicon.append(i)
-                DP_amplicon = ds.layers["DP"][loci_in_amplicon,:]
-                for j in range(n_cells):
-                    fusion_amplicon_matrix[k,j] = np.median(DP_amplicon[:,filtered_cells[j]])
-
-            # print(fusion_amplicon_matrix)
-
-            variants_info["CHR"].append("Fusion")
-            variants_info["POS"].append(1)
-            variants_info["REF"].append("-")
-            variants_info["ALT"].append("-")
-            variants_info["REGION"].append("Fusion")
-            variants_info["FREQ"].append(0)
-
-            if patient in inv16.values:
-                variants_info["NAME"].append("Fusion inv(16): CBFB-MYH11")
-            else:
-                variants_info["NAME"].append("Fusion t(8;21): RUNX1-RUNX1T1")
-
-            # Create ColSums
-            fusion_info = [sum(x) for x in zip(*fusion_amplicon_matrix)]
-
-            # print(fusion_info)
-
-            # For samples with >1 fusion
+        for i,locus in enumerate(filtered_loci):
+            gene_names.append(variant_names[i])
             for j in range(n_cells):
-                if fusion_info[j] > 2:
-                    variants_info[str(j)].append(str(fusion_info[j]) + ":" +  \
-                                                str(fusion_info[j]) + ":1") 
-                else:
-                    variants_info[str(j)].append("6:0:0")
+                if (GQ[filtered_loci[i],filtered_cells[j]]>0.1):
+                    genotype_matrix[i,j] = int(genotypes[filtered_loci[i],filtered_cells[j]])
+                else: # if genotype quality is 0, genotype is unknown
+                    genotype_matrix[i,j]=3
+        np.savetxt(os.path.join(outdir,basename+"_genotypes.csv"),genotype_matrix.astype(int),delimiter=" ",fmt='%i')
+        with open(os.path.join(outdir,basename+".geneNames"), 'w') as outfile:
+            outfile.write('\n'.join(gene_names))
 
-            # Add info to variant file
-            df_variants = pd.DataFrame(variants_info)
-            df_variants.to_csv(os.path.join(outdir,basename.replace(".cells", "")+"_variants.csv"),index=False,header=True)     
 
-            # Add zeros to region file
-            fusion_depth = ["Fusion_Fusion"] + [0] * n_cells       
-            fusion_depth = pd.DataFrame(fusion_depth).T
-            fusion_depth.to_csv(os.path.join(outdir,basename.replace(".cells", "")+"_regions.csv"),sep=",",header=False,index=False, mode = "a")
+        ################################
+        # BiTSC2 input: DP, AD, segments
 
-            # Create Fusion Info
-            df_fusions = pd.DataFrame(fusion_amplicon_matrix, index=amplicon_names)
-            df_fusions.to_csv(os.path.join(outdir,basename.replace(".cells", "")+"_fusions.csv"),index=True,header=False)     
 
-    print(bcolors.HEADER + '{:*^80}'.format("Finished preprocessing for sample " + basename + " of patient " + patient + "!") + bcolors.ENDC)
+        DP_matrix=np.zeros((n_loci,n_cells))
+        AD_matrix=np.zeros((n_loci,n_cells))
+
+        for i in range(len(filtered_loci)):
+            for j in range(n_cells):
+                AD_matrix[i,j] = int(AD[filtered_loci[i],filtered_cells[j]])
+                DP_matrix[i,j] = int(AD[filtered_loci[i],filtered_cells[j]]) + int(RO[filtered_loci[i],filtered_cells[j]])
+
+        # Add regions which do not have any loci ??
+        region2loci={}
+        df_region = df_genes if region=="gene" else df_amplicons
+        for x in df_region.index:
+            region2loci[x[x.find("_")+1:]] = []
+        for i in df_variants.index:
+            region2loci[df_variants.loc[i,"REGION"]].append(i)
+        regions_depth=[]
+        for x in df_region.index:
+            region = x[1+x.find("_"):]
+            if len(region2loci[region])==0:
+                regions_depth.append(df_region.loc[x,:])
+        if len(regions_depth)>0:
+            regions_depth = np.array(regions_depth)
+            DP_matrix = np.concatenate([DP_matrix,regions_depth],axis=0)
+            AD_matrix = np.concatenate([AD_matrix,np.zeros(regions_depth.shape)],axis=0)
+
+        np.savetxt(os.path.join(outdir,basename+"_full_DP.csv"),DP_matrix.astype(int),delimiter=",",fmt='%i')
+        np.savetxt(os.path.join(outdir,basename+"_full_AD.csv"),AD_matrix.astype(int),delimiter=",",fmt='%i')
+        
+        # Subsample cells
+        n_cells_BITSC2 = min(200,n_cells)
+        cells_subset = np.random.choice(n_cells,n_cells_BITSC2,replace=False)
+        DP_matrix = DP_matrix[:,cells_subset]
+        AD_matrix = AD_matrix[:,cells_subset]
+        np.savetxt(os.path.join(outdir,basename+"_DP.csv"),DP_matrix.astype(int),delimiter=",",fmt='%i')
+        np.savetxt(os.path.join(outdir,basename+"_AD.csv"),AD_matrix.astype(int),delimiter=",",fmt='%i')
+
+        # Create genomic segments for BiTSC2
+        segments = []
+        start_region = 0
+        end_region = 0
+        while end_region < n_loci:
+            if end_region==n_loci-1 or amplicon_to_gene[amplicons[filtered_loci[start_region]]]  != amplicon_to_gene[amplicons[filtered_loci[end_region+1]]]:
+                segments.append((start_region+1,end_region+1))
+                start_region = end_region+1
+                end_region = start_region
+            else:
+                end_region+=1
+        for i in range(n_loci+1,AD_matrix.shape[0]+1):
+            segments.append((i,i))
+        np.savetxt(os.path.join(outdir,basename+"_segments.csv"),np.array(segments).astype(int),delimiter=",",fmt='%i')
+        np.savetxt(os.path.join(outdir,basename+"_full_segments.csv"),np.array(segments).astype(int),delimiter=",",fmt='%i')
+            
     
+
     if SNP_file != None:
         SNP_f.close()
-    
 
 parser = argparse.ArgumentParser()
 parser.add_argument('-i', type = str, help='Input. Can be a loom file or a directory of loom files')
@@ -698,15 +546,11 @@ parser.add_argument('--region', type = str,default = "gene", help='Which region 
 parser.add_argument('--panel', type = str,default = None, help='CSV metadata file for the amplicons. Useful to get the correct name of the amplicons.')
 parser.add_argument('--whitelist', type = str,default = None, help='CSV file containing the mutations to always include')
 parser.add_argument('--ref', type = int,default = 37, help='Reference genome (37 or 38)')
-parser.add_argument('--use_whitelist_only', action = 'store_true', help='Call only mutations found in whitelist.')
-parser.add_argument('--use_fusion', action = 'store_true', help='Identify fusion reads in sample.')
 args = parser.parse_args()
 
 if len(args.i)>5 and args.i[-5:]==".loom": # Preprocess a single loom file
-    # Default:
-    # convert_loom(args.i,args.o,15,6,0.2,0.25,0.4,0.015,region=args.region, reference=args.ref,verbose=True,SNP_file=args.SNP,panel_file = args.panel, whitelist_file = args.whitelist, use_whitelist_only = args.use_whitelist_only, fusion = args.use_fusion)
-    convert_loom(args.i,args.o,15,6,0.2,0.25,0.4,0.015,region=args.region, reference=args.ref,verbose=True,SNP_file=args.SNP,panel_file = args.panel, whitelist_file = args.whitelist, use_whitelist_only = args.use_whitelist_only, fusion = args.use_fusion)
+    convert_loom(args.i,args.o,15,6,0.2,0.25,0.4,0.015,region=args.region, reference=args.ref,verbose=True,SNP_file=args.SNP,panel_file = args.panel, whitelist_file = args.whitelist)
 else: # Preprocess a whole directory of loom files
     for f in sorted(os.listdir(args.i)):
         if len(f)>5 and f[-5:]==".loom":
-            convert_loom(os.path.join(args.i,f),args.o,15,6,0.2,0.25,0.4,0.015,region=args.region,reference=args.ref,verbose=True,SNP_file=args.SNP,panel_file = args.panel,whitelist_file=args.whitelist, use_whitelist_only = args.use_whitelist_only, fusion = args.use_fusion)
+            convert_loom(os.path.join(args.i,f),args.o,15,6,0.2,0.25,0.4,0.015,region=args.region,reference=args.ref,verbose=True,SNP_file=args.SNP,panel_file = args.panel,whitelist_file=args.whitelist)
